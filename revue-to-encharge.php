@@ -30,11 +30,15 @@ class RevueToEncharge
 {
     protected $revue_api_key;
     protected $encharge_api_key;
+    protected $encharge_marketing_emails_category_id;
+    protected $encharge_transactional_emails_category_id;
 
-    public function __construct($revue_api_key, $encharge_api_key)
+    public function __construct($revue_api_key, $encharge_api_key, $encharge_marketing_emails_category_id, $encharge_transactional_emails_category_id)
     {
         $this->revue_api_key = $revue_api_key;
         $this->encharge_api_key = $encharge_api_key;
+        $this->encharge_marketing_emails_category_id = $encharge_marketing_emails_category_id;
+        $this->encharge_transactional_emails_category_id = $encharge_transactional_emails_category_id;
     }
 
     public function getSubscriberRevue()
@@ -124,7 +128,7 @@ class RevueToEncharge
             $ch,
             CURLOPT_HTTPHEADER,
             array(
-                'Content-Type: application/json', // for define content type that is json
+                'Content-Type: application/json', // define content type that is json
                 'X-Encharge-Token: '.$this->encharge_api_key.'', // send token in header request
             )
         );
@@ -137,8 +141,43 @@ class RevueToEncharge
             "userId" => $user->id,
             'SOURCE' => 'Twitter Subscriber via Revue',
             'tags' => 'Twitter/Revue Subscriber',
-            'CommunicationCategories.cat_'.$encharge_marketing_emails_category_id.'' => 'Opted in',
-            'CommunicationCategories.cat_'.$encharge_transactional_emails_category_id.'' => 'Opted in'
+            'CommunicationCategories.cat_'.$this->encharge_marketing_emails_category_id.'' => 'Opted in',
+            'CommunicationCategories.cat_'.$this->encharge_transactional_emails_category_id.'' => 'Opted in'
+        ]);
+
+        curl_setopt($ch, CURLOPT_URL,"https://api.encharge.io/v1/people");
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $fields);
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $server_output = curl_exec($ch);
+
+        curl_close($ch);
+
+        return true;
+    }
+
+    public function UpdateEncharge($user)
+    {
+        $ch = curl_init();
+        curl_setopt(
+            $ch,
+            CURLOPT_HTTPHEADER,
+            array(
+                'Content-Type: application/json', // define content type that is json
+                'X-Encharge-Token: '.$this->encharge_api_key.'', // send token in header request
+            )
+        );
+
+        $fields = json_encode([
+            "name" => $user->first_name. ' ' . $user->last_name,
+            "email" => $user->email ,
+            "firstName" => $user->first_name,
+            "lastName" => $user->last_name,
+            "userId" => $user->id,
+            'CommunicationCategories.cat_'.$this->encharge_marketing_emails_category_id.'' => 'Opted in',
+            'CommunicationCategories.cat_'.$this->encharge_transactional_emails_category_id.'' => 'Opted in'
         ]);
 
         curl_setopt($ch, CURLOPT_URL,"https://api.encharge.io/v1/people");
@@ -164,7 +203,7 @@ class RevueToEncharge
         $list_sub = json_decode($list_sub);
 
         if (count($list_sub) < 1) {
-            $error = "syncing error: you don't have any subscriber on Revue";
+            $error = "syncing error: you don't have any subscribers on Revue";
             $this->debug($error);
         }
 
@@ -185,8 +224,12 @@ class RevueToEncharge
             }
 
             if ($user_encharge->users) {
-                if ($sub->email != $user_encharge->users[0]->email || $sub->first_name != $user_encharge->users[0]->firstName || $sub->last_name!=$user_encharge->users[0]->lastName ) {
-                    $this->addToEncharge($sub);
+                if ($sub->first_name != $user_encharge->users[0]->firstName || $sub->last_name!=$user_encharge->users[0]->lastName ) {
+                    if ($user_encharge->users[0]->SOURCE) {
+                        $this->UpdateEncharge($sub);
+                    } else {
+                        $this->addToEncharge($sub);
+                    }
                     $countAddToEncharge += 1;
                     $message = "$date Updated $sub->email in Encharge with new Revue data";
                     $this->debug($message);
@@ -215,6 +258,6 @@ class RevueToEncharge
  * Run the script
  * --------------------------------------------------------------------------- */
 
-$app = new RevueToEncharge($revue_api_key, $encharge_api_key);
+$app = new RevueToEncharge($revue_api_key, $encharge_api_key, $encharge_marketing_emails_category_id, $encharge_transactional_emails_category_id);
 $app->sync();
 ?>
